@@ -95,6 +95,7 @@ class ApplianceHealthStateSensor(ApplianceHealthMonitorSensor):
     """Sensor for appliance health state."""
 
     _attr_icon = "mdi:state-machine"
+    _attr_device_class = SensorDeviceClass.ENUM
 
     def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
         """Initialize the health state sensor."""
