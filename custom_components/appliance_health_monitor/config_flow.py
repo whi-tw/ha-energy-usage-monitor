@@ -179,6 +179,10 @@ class ApplianceHealthMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
 class ApplianceHealthMonitorOptionsFlow(config_entries.OptionsFlow):
     """Handle options flow for Appliance Health Monitor."""
 
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self._entry = config_entry
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
@@ -187,7 +191,7 @@ class ApplianceHealthMonitorOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         # Get current values (from options if set, otherwise from data)
-        current = {**self.config_entry.data, **self.config_entry.options}
+        current = {**self._entry.data, **self._entry.options}
 
         data_schema = vol.Schema(
             {
