@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Appliance Health Monitor",
+        "description": "Monitor the health of always-on appliances using power consumption patterns",
+        "data": {
+          "appliance_name": "Appliance Name",
+          "power_sensor": "Power Sensor",
+          "appliance_type": "Appliance Type"
+        }
+      },
+      "thresholds": {
+        "title": "Configure Detection Thresholds",
+        "description": "Adjust sensitivity and detection parameters for anomaly detection",
+        "data": {
+          "learning_period_hours": "Learning Period (hours)",
+          "door_open_sensitivity": "Door Open Sensitivity (stddev multiplier)",
+          "door_grace_minutes": "Door Open Grace Period (minutes)",
+          "compressor_cycle_threshold": "Compressor Cycle Threshold (watts)",
+          "max_compressor_off_hours": "Max Compressor Off Time (hours)",
+          "baseline_drift_threshold": "Baseline Drift Threshold (%)",
+          "expected_daily_cycles": "Expected Daily Cycles",
+          "cycle_anomaly_tolerance": "Cycle Anomaly Tolerance (%)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to power sensor",
+      "invalid_sensor": "Invalid power sensor selected",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This appliance is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Reconfigure Appliance Health Monitor",
+        "description": "Update detection thresholds and parameters",
+        "data": {
+          "learning_period_hours": "Learning Period (hours)",
+          "door_open_sensitivity": "Door Open Sensitivity (stddev multiplier)",
+          "door_grace_minutes": "Door Open Grace Period (minutes)",
+          "compressor_cycle_threshold": "Compressor Cycle Threshold (watts)",
+          "max_compressor_off_hours": "Max Compressor Off Time (hours)",
+          "baseline_drift_threshold": "Baseline Drift Threshold (%)",
+          "expected_daily_cycles": "Expected Daily Cycles",
+          "cycle_anomaly_tolerance": "Cycle Anomaly Tolerance (%)"
+        }
+      }
+    }
+  }
+}
