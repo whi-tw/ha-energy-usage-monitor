@@ -121,8 +121,10 @@ class ApplianceHealthMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
             {
                 vol.Optional(
                     CONF_LEARNING_PERIOD_HOURS,
-                    default=DEFAULT_LEARNING_PERIOD,
-                ): vol.All(vol.Coerce(int), vol.Range(min=24, max=168)),
+                    default=presets.get(
+                        CONF_LEARNING_PERIOD_HOURS, DEFAULT_LEARNING_PERIOD
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=24, max=720)),  # Up to 30 days
                 vol.Optional(
                     CONF_DOOR_OPEN_SENSITIVITY,
                     default=DEFAULT_DOOR_SENSITIVITY,
@@ -139,8 +141,10 @@ class ApplianceHealthMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                 ): vol.All(vol.Coerce(int), vol.Range(min=10, max=100)),
                 vol.Optional(
                     CONF_MAX_COMPRESSOR_OFF_HOURS,
-                    default=DEFAULT_MAX_COMPRESSOR_OFF,
-                ): vol.All(vol.Coerce(int), vol.Range(min=2, max=12)),
+                    default=presets.get(
+                        CONF_MAX_COMPRESSOR_OFF_HOURS, DEFAULT_MAX_COMPRESSOR_OFF
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=2, max=720)),  # Up to 30 days
                 vol.Optional(
                     CONF_BASELINE_DRIFT_THRESHOLD,
                     default=DEFAULT_DRIFT_THRESHOLD,
@@ -150,7 +154,7 @@ class ApplianceHealthMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                     default=presets.get(
                         CONF_EXPECTED_DAILY_CYCLES, DEFAULT_EXPECTED_CYCLES
                     ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=10, max=100)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
                 vol.Optional(
                     CONF_CYCLE_ANOMALY_TOLERANCE,
                     default=DEFAULT_CYCLE_TOLERANCE,
@@ -194,7 +198,7 @@ class ApplianceHealthMonitorOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_LEARNING_PERIOD_HOURS,
                     default=current.get(CONF_LEARNING_PERIOD_HOURS, DEFAULT_LEARNING_PERIOD),
-                ): vol.All(vol.Coerce(int), vol.Range(min=24, max=168)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=24, max=720)),  # Up to 30 days
                 vol.Optional(
                     CONF_DOOR_OPEN_SENSITIVITY,
                     default=current.get(CONF_DOOR_OPEN_SENSITIVITY, DEFAULT_DOOR_SENSITIVITY),
@@ -210,7 +214,7 @@ class ApplianceHealthMonitorOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_MAX_COMPRESSOR_OFF_HOURS,
                     default=current.get(CONF_MAX_COMPRESSOR_OFF_HOURS, DEFAULT_MAX_COMPRESSOR_OFF),
-                ): vol.All(vol.Coerce(int), vol.Range(min=2, max=12)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=2, max=720)),  # Up to 30 days
                 vol.Optional(
                     CONF_BASELINE_DRIFT_THRESHOLD,
                     default=current.get(CONF_BASELINE_DRIFT_THRESHOLD, DEFAULT_DRIFT_THRESHOLD),
@@ -218,7 +222,7 @@ class ApplianceHealthMonitorOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_EXPECTED_DAILY_CYCLES,
                     default=current.get(CONF_EXPECTED_DAILY_CYCLES, DEFAULT_EXPECTED_CYCLES),
-                ): vol.All(vol.Coerce(int), vol.Range(min=10, max=100)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
                 vol.Optional(
                     CONF_CYCLE_ANOMALY_TOLERANCE,
                     default=current.get(CONF_CYCLE_ANOMALY_TOLERANCE, DEFAULT_CYCLE_TOLERANCE),
