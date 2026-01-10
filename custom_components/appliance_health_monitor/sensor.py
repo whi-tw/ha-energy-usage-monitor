@@ -15,6 +15,8 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    APPLIANCE_LABELS,
+    APPLIANCE_TYPE_CUSTOM,
     ATTR_BASELINE_MEAN,
     ATTR_BASELINE_STDDEV,
     ATTR_COMPRESSOR_OFF_POWER,
@@ -24,6 +26,7 @@ from .const import (
     ATTR_LEARNING_PROGRESS,
     ATTR_SAMPLES_COLLECTED,
     CONF_APPLIANCE_NAME,
+    CONF_APPLIANCE_TYPE,
     DOMAIN,
     HEALTH_STATES,
     STATE_INITIALIZING,
@@ -46,15 +49,16 @@ async def async_setup_entry(
 ) -> None:
     """Set up Appliance Health Monitor sensors from a config entry."""
     appliance_name = entry.data[CONF_APPLIANCE_NAME]
+    appliance_type = entry.data.get(CONF_APPLIANCE_TYPE, APPLIANCE_TYPE_CUSTOM)
 
     entities = [
-        ApplianceHealthStateSensor(entry, appliance_name),
-        ApplianceBaselineSensor(entry, appliance_name),
-        ApplianceStdDevSensor(entry, appliance_name),
-        ApplianceCompressorOnPowerSensor(entry, appliance_name),
-        ApplianceCompressorOffPowerSensor(entry, appliance_name),
-        ApplianceCompressorCyclesSensor(entry, appliance_name),
-        ApplianceLearningProgressSensor(entry, appliance_name),
+        ApplianceHealthStateSensor(entry, appliance_name, appliance_type),
+        ApplianceBaselineSensor(entry, appliance_name, appliance_type),
+        ApplianceStdDevSensor(entry, appliance_name, appliance_type),
+        ApplianceCompressorOnPowerSensor(entry, appliance_name, appliance_type),
+        ApplianceCompressorOffPowerSensor(entry, appliance_name, appliance_type),
+        ApplianceCompressorCyclesSensor(entry, appliance_name, appliance_type),
+        ApplianceLearningProgressSensor(entry, appliance_name, appliance_type),
     ]
 
     async_add_entities(entities)
@@ -71,17 +75,19 @@ class ApplianceHealthMonitorSensor(SensorEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str, suffix: str) -> None:
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str, suffix: str) -> None:
         """Initialize the sensor."""
         self._entry = entry
         self._appliance_name = appliance_name
+        self._appliance_type = appliance_type
+        self._labels = APPLIANCE_LABELS.get(appliance_type, APPLIANCE_LABELS[APPLIANCE_TYPE_CUSTOM])
         self._attr_unique_id = f"{entry.entry_id}_{suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=f"{appliance_name} Health Monitor",
             manufacturer="Appliance Health Monitor",
             model="Always-On Appliance",
-            sw_version="1.0.0",
+            sw_version="1.0.2",
         )
 
 
@@ -90,9 +96,9 @@ class ApplianceHealthStateSensor(ApplianceHealthMonitorSensor):
 
     _attr_icon = "mdi:state-machine"
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
         """Initialize the health state sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_HEALTH_STATE)
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_HEALTH_STATE)
         self._attr_name = "Health State"
         self._state = STATE_INITIALIZING
         self._attr_extra_state_attributes = {}
@@ -123,9 +129,9 @@ class ApplianceBaselineSensor(ApplianceHealthMonitorSensor):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
         """Initialize the baseline sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_BASELINE_AVERAGE)
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_BASELINE_AVERAGE)
         self._attr_name = "Baseline Average Power"
         self._state = 0.0
 
@@ -148,9 +154,9 @@ class ApplianceStdDevSensor(ApplianceHealthMonitorSensor):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
         """Initialize the stddev sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_BASELINE_STDDEV)
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_BASELINE_STDDEV)
         self._attr_name = "Baseline Standard Deviation"
         self._state = 0.0
 
@@ -173,10 +179,10 @@ class ApplianceCompressorOnPowerSensor(ApplianceHealthMonitorSensor):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
-        """Initialize the compressor ON power sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_COMPRESSOR_ON_POWER)
-        self._attr_name = "Compressor ON Power"
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
+        """Initialize the device ON power sensor."""
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_COMPRESSOR_ON_POWER)
+        self._attr_name = f"{self._labels['device_on']} Power"
         self._state = 0.0
 
     @property
@@ -198,10 +204,10 @@ class ApplianceCompressorOffPowerSensor(ApplianceHealthMonitorSensor):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
-        """Initialize the compressor OFF power sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_COMPRESSOR_OFF_POWER)
-        self._attr_name = "Compressor OFF Power"
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
+        """Initialize the device OFF power sensor."""
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_COMPRESSOR_OFF_POWER)
+        self._attr_name = f"{self._labels['device_off']} Power"
         self._state = 0.0
 
     @property
@@ -221,10 +227,10 @@ class ApplianceCompressorCyclesSensor(ApplianceHealthMonitorSensor):
     _attr_icon = "mdi:sync"
     _attr_state_class = SensorStateClass.TOTAL
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
-        """Initialize the compressor cycles sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_COMPRESSOR_CYCLES)
-        self._attr_name = "Compressor Cycles (Daily)"
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
+        """Initialize the device cycles sensor."""
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_COMPRESSOR_CYCLES)
+        self._attr_name = f"{self._labels['cycles']} (Daily)"
         self._state = 0
 
     @property
@@ -250,9 +256,9 @@ class ApplianceLearningProgressSensor(ApplianceHealthMonitorSensor):
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
         """Initialize the learning progress sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_LEARNING_PROGRESS)
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_LEARNING_PROGRESS)
         self._attr_name = "Learning Progress"
         self._state = 0
 

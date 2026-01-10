@@ -12,7 +12,10 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    APPLIANCE_LABELS,
+    APPLIANCE_TYPE_CUSTOM,
     CONF_APPLIANCE_NAME,
+    CONF_APPLIANCE_TYPE,
     DOMAIN,
     SUFFIX_COMPRESSOR_STATE,
     SUFFIX_DOOR_OPEN,
@@ -29,11 +32,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up Appliance Health Monitor binary sensors from a config entry."""
     appliance_name = entry.data[CONF_APPLIANCE_NAME]
+    appliance_type = entry.data.get(CONF_APPLIANCE_TYPE, APPLIANCE_TYPE_CUSTOM)
 
     entities = [
-        ApplianceDoorOpenBinarySensor(entry, appliance_name),
-        ApplianceNeedsAttentionBinarySensor(entry, appliance_name),
-        ApplianceCompressorStateBinarySensor(entry, appliance_name),
+        ApplianceDoorOpenBinarySensor(entry, appliance_name, appliance_type),
+        ApplianceNeedsAttentionBinarySensor(entry, appliance_name, appliance_type),
+        ApplianceCompressorStateBinarySensor(entry, appliance_name, appliance_type),
     ]
 
     async_add_entities(entities)
@@ -50,31 +54,33 @@ class ApplianceHealthMonitorBinarySensor(BinarySensorEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str, suffix: str) -> None:
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str, suffix: str) -> None:
         """Initialize the binary sensor."""
         self._entry = entry
         self._appliance_name = appliance_name
+        self._appliance_type = appliance_type
+        self._labels = APPLIANCE_LABELS.get(appliance_type, APPLIANCE_LABELS[APPLIANCE_TYPE_CUSTOM])
         self._attr_unique_id = f"{entry.entry_id}_{suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=f"{appliance_name} Health Monitor",
             manufacturer="Appliance Health Monitor",
             model="Always-On Appliance",
-            sw_version="1.0.0",
+            sw_version="1.0.2",
         )
         self._state = False
 
 
 class ApplianceDoorOpenBinarySensor(ApplianceHealthMonitorBinarySensor):
-    """Binary sensor for door open detection."""
+    """Binary sensor for power spike / door open detection."""
 
-    _attr_icon = "mdi:fridge-alert"
-    _attr_device_class = BinarySensorDeviceClass.DOOR
+    _attr_icon = "mdi:flash-alert"
+    _attr_device_class = BinarySensorDeviceClass.POWER
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
-        """Initialize the door open sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_DOOR_OPEN)
-        self._attr_name = "Door Open"
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
+        """Initialize the power spike sensor."""
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_DOOR_OPEN)
+        self._attr_name = self._labels["power_spike_event"]
 
     @property
     def is_on(self) -> bool:
@@ -93,9 +99,9 @@ class ApplianceNeedsAttentionBinarySensor(ApplianceHealthMonitorBinarySensor):
     _attr_icon = "mdi:alert-circle"
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
         """Initialize the needs attention sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_NEEDS_ATTENTION)
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_NEEDS_ATTENTION)
         self._attr_name = "Needs Attention"
 
     @property
@@ -110,15 +116,15 @@ class ApplianceNeedsAttentionBinarySensor(ApplianceHealthMonitorBinarySensor):
 
 
 class ApplianceCompressorStateBinarySensor(ApplianceHealthMonitorBinarySensor):
-    """Binary sensor for compressor state."""
+    """Binary sensor for device running state."""
 
     _attr_icon = "mdi:engine"
     _attr_device_class = BinarySensorDeviceClass.RUNNING
 
-    def __init__(self, entry: ConfigEntry, appliance_name: str) -> None:
-        """Initialize the compressor state sensor."""
-        super().__init__(entry, appliance_name, SUFFIX_COMPRESSOR_STATE)
-        self._attr_name = "Compressor Running"
+    def __init__(self, entry: ConfigEntry, appliance_name: str, appliance_type: str) -> None:
+        """Initialize the device state sensor."""
+        super().__init__(entry, appliance_name, appliance_type, SUFFIX_COMPRESSOR_STATE)
+        self._attr_name = self._labels["device_state"]
 
     @property
     def is_on(self) -> bool:

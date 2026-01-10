@@ -15,10 +15,10 @@
         "description": "Adjust sensitivity and detection parameters for anomaly detection",
         "data": {
           "learning_period_hours": "Learning Period (hours)",
-          "door_open_sensitivity": "Door Open Sensitivity (stddev multiplier)",
-          "door_grace_minutes": "Door Open Grace Period (minutes)",
-          "compressor_cycle_threshold": "Compressor Cycle Threshold (watts)",
-          "max_compressor_off_hours": "Max Compressor Off Time (hours)",
+          "door_open_sensitivity": "Power Spike Sensitivity (stddev multiplier)",
+          "door_grace_minutes": "Power Spike Grace Period (minutes)",
+          "compressor_cycle_threshold": "Cycle Power Threshold (watts)",
+          "max_compressor_off_hours": "Max Idle Time (hours)",
           "baseline_drift_threshold": "Baseline Drift Threshold (%)",
           "expected_daily_cycles": "Expected Daily Cycles",
           "cycle_anomaly_tolerance": "Cycle Anomaly Tolerance (%)"
@@ -52,10 +52,10 @@
         "description": "Update detection thresholds and parameters",
         "data": {
           "learning_period_hours": "Learning Period (hours)",
-          "door_open_sensitivity": "Door Open Sensitivity (stddev multiplier)",
-          "door_grace_minutes": "Door Open Grace Period (minutes)",
-          "compressor_cycle_threshold": "Compressor Cycle Threshold (watts)",
-          "max_compressor_off_hours": "Max Compressor Off Time (hours)",
+          "door_open_sensitivity": "Power Spike Sensitivity (stddev multiplier)",
+          "door_grace_minutes": "Power Spike Grace Period (minutes)",
+          "compressor_cycle_threshold": "Cycle Power Threshold (watts)",
+          "max_compressor_off_hours": "Max Idle Time (hours)",
           "baseline_drift_threshold": "Baseline Drift Threshold (%)",
           "expected_daily_cycles": "Expected Daily Cycles",
           "cycle_anomaly_tolerance": "Cycle Anomaly Tolerance (%)"

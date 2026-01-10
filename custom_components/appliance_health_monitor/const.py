@@ -112,3 +112,47 @@ ATTR_LEARNING_PROGRESS = "learning_progress"
 ATTR_SAMPLES_COLLECTED = "samples_collected"
 ATTR_LAST_CYCLE_TIME = "last_cycle_time"
 ATTR_DAILY_CYCLES = "daily_cycles"
+
+# Context-aware label mappings for different appliance types
+APPLIANCE_LABELS = {
+    APPLIANCE_TYPE_REFRIGERATOR: {
+        "device_name": "Compressor",
+        "power_spike_event": "Door Open",
+        "device_on": "Compressor On",
+        "device_off": "Compressor Off",
+        "cycles": "Compressor Cycles",
+        "device_state": "Compressor Running",
+    },
+    APPLIANCE_TYPE_FREEZER: {
+        "device_name": "Compressor",
+        "power_spike_event": "Door Open",
+        "device_on": "Compressor On",
+        "device_off": "Compressor Off",
+        "cycles": "Compressor Cycles",
+        "device_state": "Compressor Running",
+    },
+    APPLIANCE_TYPE_HVAC: {
+        "device_name": "Compressor",
+        "power_spike_event": "Power Spike",
+        "device_on": "Compressor On",
+        "device_off": "Compressor Off",
+        "cycles": "Compressor Cycles",
+        "device_state": "Compressor Running",
+    },
+    APPLIANCE_TYPE_SUMP_PUMP: {
+        "device_name": "Pump Motor",
+        "power_spike_event": "Power Spike",
+        "device_on": "Pump On",
+        "device_off": "Pump Off",
+        "cycles": "Pump Cycles",
+        "device_state": "Pump Running",
+    },
+    APPLIANCE_TYPE_CUSTOM: {
+        "device_name": "Device",
+        "power_spike_event": "Power Spike",
+        "device_on": "Device On",
+        "device_off": "Device Off",
+        "cycles": "Power Cycles",
+        "device_state": "Device Running",
+    },
+}
