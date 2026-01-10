@@ -1,5 +1,4 @@
 """Binary sensor platform for Appliance Health Monitor."""
-from __future__ import annotations
 
 import logging
 

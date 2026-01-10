@@ -1,5 +1,4 @@
 """Config flow for Appliance Health Monitor integration."""
-from __future__ annotations
 
 import logging
 from typing import Any
