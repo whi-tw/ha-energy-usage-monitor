@@ -220,6 +220,11 @@ class ApplianceHealthCoordinator:
 
     async def _process_learning_phase(self, current_power: float) -> None:
         """Process power reading during learning phase."""
+        # Initialize learning start time if not set
+        if self._learning_start_time is None:
+            self._learning_start_time = dt_util.now()
+            _LOGGER.debug("Learning phase started")
+
         # Collect sample
         self._baseline_samples.append(current_power)
 
