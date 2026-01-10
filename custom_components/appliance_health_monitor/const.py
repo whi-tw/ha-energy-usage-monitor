@@ -19,12 +19,14 @@ CONF_CYCLE_ANOMALY_TOLERANCE = "cycle_anomaly_tolerance"
 APPLIANCE_TYPE_REFRIGERATOR = "refrigerator"
 APPLIANCE_TYPE_FREEZER = "freezer"
 APPLIANCE_TYPE_HVAC = "hvac"
+APPLIANCE_TYPE_SUMP_PUMP = "sump_pump"
 APPLIANCE_TYPE_CUSTOM = "custom"
 
 APPLIANCE_TYPES = [
     APPLIANCE_TYPE_REFRIGERATOR,
     APPLIANCE_TYPE_FREEZER,
     APPLIANCE_TYPE_HVAC,
+    APPLIANCE_TYPE_SUMP_PUMP,
     APPLIANCE_TYPE_CUSTOM,
 ]
 
@@ -74,6 +76,12 @@ APPLIANCE_PRESETS = {
     APPLIANCE_TYPE_HVAC: {
         CONF_EXPECTED_DAILY_CYCLES: 15,
         CONF_COMPRESSOR_CYCLE_THRESHOLD: 50,
+    },
+    APPLIANCE_TYPE_SUMP_PUMP: {
+        CONF_EXPECTED_DAILY_CYCLES: 5,  # Pumps run less frequently, depends on water table
+        CONF_COMPRESSOR_CYCLE_THRESHOLD: 100,  # Higher power draw when pump motor runs
+        CONF_MAX_COMPRESSOR_OFF_HOURS: 168,  # 7 days - alert if no activity in a week
+        CONF_LEARNING_PERIOD_HOURS: 168,  # 7 days - need longer learning for infrequent cycles
     },
     APPLIANCE_TYPE_CUSTOM: {},
 }

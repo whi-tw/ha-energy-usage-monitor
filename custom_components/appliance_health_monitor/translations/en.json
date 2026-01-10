@@ -34,6 +34,17 @@
       "already_configured": "This appliance is already configured"
     }
   },
+  "selector": {
+    "appliance_type": {
+      "options": {
+        "refrigerator": "Refrigerator",
+        "freezer": "Freezer",
+        "hvac": "HVAC",
+        "sump_pump": "Sump Pump",
+        "custom": "Custom"
+      }
+    }
+  },
   "options": {
     "step": {
       "init": {
