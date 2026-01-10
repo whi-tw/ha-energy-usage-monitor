@@ -100,3 +100,5 @@
 - v1.1.4 - ENUM device class fix
 - v1.1.5 - Options flow attempted fix (incomplete)
 - v1.1.6 - Options flow complete fix
+- v1.2.0 - Learning mode indicator
+- v1.3.0 - Soft learning with smart defaults (instant functionality)

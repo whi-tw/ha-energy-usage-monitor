@@ -113,6 +113,40 @@ ATTR_SAMPLES_COLLECTED = "samples_collected"
 ATTR_LAST_CYCLE_TIME = "last_cycle_time"
 ATTR_DAILY_CYCLES = "daily_cycles"
 
+# Smart defaults for immediate functionality during learning
+APPLIANCE_SMART_DEFAULTS = {
+    APPLIANCE_TYPE_REFRIGERATOR: {
+        "baseline_mean": 50.0,  # Watts
+        "baseline_stddev": 15.0,  # Watts
+        "compressor_on_power": 120.0,  # Watts
+        "compressor_off_power": 15.0,  # Watts
+    },
+    APPLIANCE_TYPE_FREEZER: {
+        "baseline_mean": 60.0,
+        "baseline_stddev": 20.0,
+        "compressor_on_power": 100.0,
+        "compressor_off_power": 20.0,
+    },
+    APPLIANCE_TYPE_HVAC: {
+        "baseline_mean": 100.0,
+        "baseline_stddev": 30.0,
+        "compressor_on_power": 200.0,
+        "compressor_off_power": 30.0,
+    },
+    APPLIANCE_TYPE_SUMP_PUMP: {
+        "baseline_mean": 500.0,
+        "baseline_stddev": 100.0,
+        "compressor_on_power": 800.0,
+        "compressor_off_power": 5.0,
+    },
+    APPLIANCE_TYPE_CUSTOM: {
+        "baseline_mean": 50.0,
+        "baseline_stddev": 20.0,
+        "compressor_on_power": 100.0,
+        "compressor_off_power": 10.0,
+    },
+}
+
 # Context-aware label mappings for different appliance types
 APPLIANCE_LABELS = {
     APPLIANCE_TYPE_REFRIGERATOR: {

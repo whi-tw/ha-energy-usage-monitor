@@ -13,7 +13,9 @@ from homeassistant.helpers.event import async_track_state_change_event, async_tr
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    APPLIANCE_SMART_DEFAULTS,
     CONF_APPLIANCE_NAME,
+    CONF_APPLIANCE_TYPE,
     CONF_BASELINE_DRIFT_THRESHOLD,
     CONF_COMPRESSOR_CYCLE_THRESHOLD,
     CONF_CYCLE_ANOMALY_TOLERANCE,
@@ -124,16 +126,26 @@ class ApplianceHealthCoordinator:
         self._needs_attention_id = f"binary_sensor.{entry_id}_{SUFFIX_NEEDS_ATTENTION}"
         self._compressor_state_id = f"binary_sensor.{entry_id}_{SUFFIX_COMPRESSOR_STATE}"
 
+        # Get smart defaults for this appliance type
+        appliance_type = self._config.get(CONF_APPLIANCE_TYPE, "custom")
+        defaults = APPLIANCE_SMART_DEFAULTS.get(appliance_type, APPLIANCE_SMART_DEFAULTS["custom"])
+
         # Learning phase tracking
         self._baseline_samples: list[float] = []
         self._learning_start_time: datetime | None = None
         self._learning_complete = False
 
-        # Learned values
-        self._baseline_mean = 0.0
-        self._baseline_stddev = 0.0
-        self._compressor_on_power = 0.0
-        self._compressor_off_power = 0.0
+        # Default values (used during learning, replaced after learning completes)
+        self._default_baseline_mean = defaults["baseline_mean"]
+        self._default_baseline_stddev = defaults["baseline_stddev"]
+        self._default_compressor_on_power = defaults["compressor_on_power"]
+        self._default_compressor_off_power = defaults["compressor_off_power"]
+
+        # Learned values (0.0 until learning completes)
+        self._learned_baseline_mean = 0.0
+        self._learned_baseline_stddev = 0.0
+        self._learned_compressor_on_power = 0.0
+        self._learned_compressor_off_power = 0.0
 
         # Compressor cycle tracking
         self._compressor_is_on = False
@@ -144,12 +156,37 @@ class ApplianceHealthCoordinator:
 
         # Anomaly detection state
         self._door_open_start: datetime | None = None
-        self._current_state = STATE_INITIALIZING
+        self._current_state = STATE_NORMAL  # Start with NORMAL, not INITIALIZING
 
         # Event listeners
         self._unsub_power_listener = None
         self._unsub_daily_reset = None
         self._unsub_stop_listener = None
+
+    # Helper methods to get current baseline values (defaults or learned)
+    def _get_baseline_mean(self) -> float:
+        """Get current baseline mean (default or learned)."""
+        if self._learning_complete:
+            return self._learned_baseline_mean
+        return self._default_baseline_mean
+
+    def _get_baseline_stddev(self) -> float:
+        """Get current baseline stddev (default or learned)."""
+        if self._learning_complete:
+            return self._learned_baseline_stddev
+        return self._default_baseline_stddev
+
+    def _get_compressor_on_power(self) -> float:
+        """Get current compressor ON power (default or learned)."""
+        if self._learning_complete:
+            return self._learned_compressor_on_power
+        return self._default_compressor_on_power
+
+    def _get_compressor_off_power(self) -> float:
+        """Get current compressor OFF power (default or learned)."""
+        if self._learning_complete:
+            return self._learned_compressor_off_power
+        return self._default_compressor_off_power
 
     async def async_start(self) -> None:
         """Start monitoring."""
@@ -173,11 +210,19 @@ class ApplianceHealthCoordinator:
             self._async_stop,
         )
 
-        # Start learning
+        # Initialize with smart defaults
         self._learning_start_time = dt_util.now()
-        await self._update_health_state(STATE_INITIALIZING)
+        await self._update_health_state(STATE_NORMAL)
+        await self._update_baseline_sensors_with_defaults()
 
-        _LOGGER.info("Monitoring started for %s", self._config[CONF_APPLIANCE_NAME])
+        _LOGGER.info(
+            "Monitoring started for %s (using smart defaults: baseline=%.1fW±%.1fW, ON=%.1fW, OFF=%.1fW)",
+            self._config[CONF_APPLIANCE_NAME],
+            self._default_baseline_mean,
+            self._default_baseline_stddev,
+            self._default_compressor_on_power,
+            self._default_compressor_off_power,
+        )
 
     async def async_stop(self) -> None:
         """Stop monitoring."""
@@ -210,12 +255,11 @@ class ApplianceHealthCoordinator:
             _LOGGER.warning("Invalid power value: %s", new_state.state)
             return
 
-        # Learning phase
+        # Collect learning samples in background (if not complete)
         if not self._learning_complete:
             await self._process_learning_phase(current_power)
-            return
 
-        # Normal monitoring
+        # Always monitor with current values (defaults or learned)
         await self._process_monitoring_phase(current_power)
 
     async def _process_learning_phase(self, current_power: float) -> None:
@@ -245,9 +289,9 @@ class ApplianceHealthCoordinator:
             _LOGGER.warning("Not enough samples collected (%d), extending learning", len(self._baseline_samples))
             return
 
-        # Calculate baseline statistics
-        self._baseline_mean = statistics.mean(self._baseline_samples)
-        self._baseline_stddev = statistics.stdev(self._baseline_samples) if len(self._baseline_samples) > 1 else 0.0
+        # Calculate learned baseline statistics
+        self._learned_baseline_mean = statistics.mean(self._baseline_samples)
+        self._learned_baseline_stddev = statistics.stdev(self._baseline_samples) if len(self._baseline_samples) > 1 else 0.0
 
         # Detect compressor ON/OFF power levels
         # Assume ON is in top 40%, OFF is in bottom 40%
@@ -255,24 +299,33 @@ class ApplianceHealthCoordinator:
         percentile_40 = int(len(sorted_samples) * 0.4)
         percentile_60 = int(len(sorted_samples) * 0.6)
 
-        self._compressor_off_power = statistics.mean(sorted_samples[:percentile_40])
-        self._compressor_on_power = statistics.mean(sorted_samples[percentile_60:])
+        self._learned_compressor_off_power = statistics.mean(sorted_samples[:percentile_40])
+        self._learned_compressor_on_power = statistics.mean(sorted_samples[percentile_60:])
 
-        # Update sensors
+        # Update sensors with learned values
         await self._update_baseline_sensors()
 
         # Mark learning complete
         self._learning_complete = True
         await self._update_learning_progress(100)
-        await self._update_health_state(STATE_NORMAL)
 
         _LOGGER.info(
-            "Learning complete for %s: baseline=%.1fW±%.1fW, ON=%.1fW, OFF=%.1fW",
+            "Learning complete for %s - switching from defaults to learned values:",
             self._config[CONF_APPLIANCE_NAME],
-            self._baseline_mean,
-            self._baseline_stddev,
-            self._compressor_on_power,
-            self._compressor_off_power,
+        )
+        _LOGGER.info(
+            "  Baseline: %.1fW±%.1fW (was %.1fW±%.1fW)",
+            self._learned_baseline_mean,
+            self._learned_baseline_stddev,
+            self._default_baseline_mean,
+            self._default_baseline_stddev,
+        )
+        _LOGGER.info(
+            "  Compressor ON: %.1fW (was %.1fW), OFF: %.1fW (was %.1fW)",
+            self._learned_compressor_on_power,
+            self._default_compressor_on_power,
+            self._learned_compressor_off_power,
+            self._default_compressor_off_power,
         )
 
     async def _process_monitoring_phase(self, current_power: float) -> None:
@@ -286,7 +339,11 @@ class ApplianceHealthCoordinator:
     async def _update_compressor_state(self, current_power: float) -> None:
         """Update compressor on/off state based on power."""
         threshold = self._config[CONF_COMPRESSOR_CYCLE_THRESHOLD]
-        mid_power = (self._compressor_on_power + self._compressor_off_power) / 2
+
+        # Use current baseline values (defaults or learned)
+        compressor_on = self._get_compressor_on_power()
+        compressor_off = self._get_compressor_off_power()
+        mid_power = (compressor_on + compressor_off) / 2
 
         was_on = self._compressor_is_on
 
@@ -312,8 +369,12 @@ class ApplianceHealthCoordinator:
         sensitivity = self._config[CONF_DOOR_OPEN_SENSITIVITY]
         grace_minutes = self._config[CONF_DOOR_GRACE_MINUTES]
 
+        # Use current baseline values (defaults or learned)
+        baseline_mean = self._get_baseline_mean()
+        baseline_stddev = self._get_baseline_stddev()
+
         # 1. Door open detection (power spike)
-        door_threshold = self._baseline_mean + (sensitivity * self._baseline_stddev)
+        door_threshold = baseline_mean + (sensitivity * baseline_stddev)
 
         if current_power > door_threshold:
             if self._door_open_start is None:
@@ -339,7 +400,7 @@ class ApplianceHealthCoordinator:
                     await self._update_door_open_binary_sensor(False)
 
         # 2. Compressor failure detection (low power or no cycles)
-        if current_power < (self._baseline_mean * 0.3):
+        if current_power < (baseline_mean * 0.3):
             if self._current_state != STATE_COMPRESSOR_FAILING:
                 await self._update_health_state(STATE_COMPRESSOR_FAILING)
                 _LOGGER.warning("Compressor may be failing: %.1fW is very low", current_power)
@@ -402,27 +463,49 @@ class ApplianceHealthCoordinator:
         if entity and hasattr(entity, "async_update_state"):
             await entity.async_update_state(new_state)
 
-    async def _update_baseline_sensors(self) -> None:
-        """Update baseline-related sensors."""
+    async def _update_baseline_sensors_with_defaults(self) -> None:
+        """Update baseline sensors with default values on startup."""
         # Update baseline average
         entity = self._get_entity_by_suffix(SUFFIX_BASELINE_AVERAGE)
         if entity and hasattr(entity, "async_update_value"):
-            await entity.async_update_value(self._baseline_mean)
+            await entity.async_update_value(self._default_baseline_mean)
 
         # Update baseline stddev
         entity = self._get_entity_by_suffix(SUFFIX_BASELINE_STDDEV)
         if entity and hasattr(entity, "async_update_value"):
-            await entity.async_update_value(self._baseline_stddev)
+            await entity.async_update_value(self._default_baseline_stddev)
 
         # Update compressor ON power
         entity = self._get_entity_by_suffix(SUFFIX_COMPRESSOR_ON_POWER)
         if entity and hasattr(entity, "async_update_value"):
-            await entity.async_update_value(self._compressor_on_power)
+            await entity.async_update_value(self._default_compressor_on_power)
 
         # Update compressor OFF power
         entity = self._get_entity_by_suffix(SUFFIX_COMPRESSOR_OFF_POWER)
         if entity and hasattr(entity, "async_update_value"):
-            await entity.async_update_value(self._compressor_off_power)
+            await entity.async_update_value(self._default_compressor_off_power)
+
+    async def _update_baseline_sensors(self) -> None:
+        """Update baseline-related sensors with learned values."""
+        # Update baseline average
+        entity = self._get_entity_by_suffix(SUFFIX_BASELINE_AVERAGE)
+        if entity and hasattr(entity, "async_update_value"):
+            await entity.async_update_value(self._learned_baseline_mean)
+
+        # Update baseline stddev
+        entity = self._get_entity_by_suffix(SUFFIX_BASELINE_STDDEV)
+        if entity and hasattr(entity, "async_update_value"):
+            await entity.async_update_value(self._learned_baseline_stddev)
+
+        # Update compressor ON power
+        entity = self._get_entity_by_suffix(SUFFIX_COMPRESSOR_ON_POWER)
+        if entity and hasattr(entity, "async_update_value"):
+            await entity.async_update_value(self._learned_compressor_on_power)
+
+        # Update compressor OFF power
+        entity = self._get_entity_by_suffix(SUFFIX_COMPRESSOR_OFF_POWER)
+        if entity and hasattr(entity, "async_update_value"):
+            await entity.async_update_value(self._learned_compressor_off_power)
 
     async def _update_learning_progress(self, progress: int) -> None:
         """Update learning progress sensor."""
