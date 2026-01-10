@@ -434,7 +434,7 @@ class ApplianceHealthCoordinator:
         """Update compressor state binary sensor."""
         entity = self._get_entity_by_suffix(SUFFIX_COMPRESSOR_STATE)
         if entity and hasattr(entity, "async_update_state"):
-            await entity.async_update_state(is_on)
+            await entity.async_update_state(is_on, learning=not self._learning_complete)
 
     async def _update_door_open_binary_sensor(self, is_open: bool) -> None:
         """Update door open binary sensor."""

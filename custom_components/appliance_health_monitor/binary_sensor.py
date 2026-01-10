@@ -125,6 +125,7 @@ class ApplianceCompressorStateBinarySensor(ApplianceHealthMonitorBinarySensor):
         """Initialize the device state sensor."""
         super().__init__(entry, appliance_name, appliance_type, SUFFIX_COMPRESSOR_STATE)
         self._attr_name = self._labels["device_state"]
+        self._learning = True
 
     @property
     def is_on(self) -> bool:
@@ -134,9 +135,20 @@ class ApplianceCompressorStateBinarySensor(ApplianceHealthMonitorBinarySensor):
     @property
     def icon(self) -> str:
         """Return the icon."""
+        if self._learning:
+            return "mdi:school"
         return "mdi:engine" if self._state else "mdi:engine-off"
 
-    async def async_update_state(self, is_running: bool) -> None:
+    @property
+    def extra_state_attributes(self):
+        """Return extra state attributes."""
+        attrs = {}
+        if self._learning:
+            attrs["status"] = "Learning - cycle detection will activate after learning completes"
+        return attrs
+
+    async def async_update_state(self, is_running: bool, learning: bool = False) -> None:
         """Update the sensor state."""
         self._state = is_running
+        self._learning = learning
         self.async_write_ha_state()
