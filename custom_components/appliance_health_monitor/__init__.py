@@ -163,7 +163,7 @@ class ApplianceHealthCoordinator:
         # Subscribe to daily reset (midnight)
         self._unsub_daily_reset = async_track_time_interval(
             self.hass,
-            self._async_daily_reset,
+            self._daily_reset,
             timedelta(hours=24),
         )
 
