@@ -10,7 +10,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
+
+STORAGE_VERSION = 1
+STORAGE_KEY_PREFIX = "appliance_health_monitor"
 
 from .const import (
     APPLIANCE_SMART_DEFAULTS,
@@ -163,6 +167,14 @@ class ApplianceHealthCoordinator:
         self._unsub_daily_reset = None
         self._unsub_stop_listener = None
 
+        # Persistent storage
+        self._store = Store(
+            hass,
+            STORAGE_VERSION,
+            f"{STORAGE_KEY_PREFIX}.{entry.entry_id}",
+        )
+        self._last_save_sample_count = 0
+
     # Helper methods to get current baseline values (defaults or learned)
     def _get_baseline_mean(self) -> float:
         """Get current baseline mean (default or learned)."""
@@ -188,6 +200,59 @@ class ApplianceHealthCoordinator:
             return self._learned_compressor_off_power
         return self._default_compressor_off_power
 
+    async def _async_save_state(self) -> None:
+        """Save learning state to persistent storage."""
+        data = {
+            "learning_start_time": self._learning_start_time.isoformat() if self._learning_start_time else None,
+            "learning_complete": self._learning_complete,
+            "baseline_samples": self._baseline_samples,
+            "learned_baseline_mean": self._learned_baseline_mean,
+            "learned_baseline_stddev": self._learned_baseline_stddev,
+            "learned_compressor_on_power": self._learned_compressor_on_power,
+            "learned_compressor_off_power": self._learned_compressor_off_power,
+        }
+        await self._store.async_save(data)
+        self._last_save_sample_count = len(self._baseline_samples)
+        _LOGGER.debug(
+            "State saved for %s: %d samples, learning_complete=%s",
+            self._config[CONF_APPLIANCE_NAME],
+            len(self._baseline_samples),
+            self._learning_complete,
+        )
+
+    async def _async_restore_state(self) -> bool:
+        """Restore learning state from persistent storage. Returns True if state was restored."""
+        data = await self._store.async_load()
+        if data is None:
+            _LOGGER.debug("No saved state found for %s", self._config[CONF_APPLIANCE_NAME])
+            return False
+
+        # Restore learning start time
+        if data.get("learning_start_time"):
+            try:
+                self._learning_start_time = datetime.fromisoformat(data["learning_start_time"])
+            except (ValueError, TypeError):
+                self._learning_start_time = None
+
+        # Restore learning state
+        self._learning_complete = data.get("learning_complete", False)
+        self._baseline_samples = data.get("baseline_samples", [])
+        self._last_save_sample_count = len(self._baseline_samples)
+
+        # Restore learned values
+        self._learned_baseline_mean = data.get("learned_baseline_mean", 0.0)
+        self._learned_baseline_stddev = data.get("learned_baseline_stddev", 0.0)
+        self._learned_compressor_on_power = data.get("learned_compressor_on_power", 0.0)
+        self._learned_compressor_off_power = data.get("learned_compressor_off_power", 0.0)
+
+        _LOGGER.info(
+            "State restored for %s: %d samples, learning_complete=%s",
+            self._config[CONF_APPLIANCE_NAME],
+            len(self._baseline_samples),
+            self._learning_complete,
+        )
+        return True
+
     async def async_start(self) -> None:
         """Start monitoring."""
         # Subscribe to power sensor state changes
@@ -210,22 +275,56 @@ class ApplianceHealthCoordinator:
             self._async_stop,
         )
 
-        # Initialize with smart defaults
-        self._learning_start_time = dt_util.now()
-        await self._update_health_state(STATE_NORMAL)
-        await self._update_baseline_sensors_with_defaults()
+        # Try to restore saved state
+        state_restored = await self._async_restore_state()
 
-        _LOGGER.info(
-            "Monitoring started for %s (using smart defaults: baseline=%.1fW±%.1fW, ON=%.1fW, OFF=%.1fW)",
-            self._config[CONF_APPLIANCE_NAME],
-            self._default_baseline_mean,
-            self._default_baseline_stddev,
-            self._default_compressor_on_power,
-            self._default_compressor_off_power,
-        )
+        if state_restored and self._learning_complete:
+            # Learning was already complete - use learned values
+            await self._update_health_state(STATE_NORMAL)
+            await self._update_baseline_sensors()
+            await self._update_learning_progress(100)
+            _LOGGER.info(
+                "Monitoring started for %s (using learned values: baseline=%.1fW±%.1fW, ON=%.1fW, OFF=%.1fW)",
+                self._config[CONF_APPLIANCE_NAME],
+                self._learned_baseline_mean,
+                self._learned_baseline_stddev,
+                self._learned_compressor_on_power,
+                self._learned_compressor_off_power,
+            )
+        elif state_restored and self._learning_start_time:
+            # Learning in progress - restore progress and continue with defaults
+            learning_hours = self._config[CONF_LEARNING_PERIOD_HOURS]
+            elapsed_hours = (dt_util.now() - self._learning_start_time).total_seconds() / 3600
+            progress = min(100, int((elapsed_hours / learning_hours) * 100))
+            await self._update_health_state(STATE_NORMAL)
+            await self._update_baseline_sensors_with_defaults()
+            await self._update_learning_progress(progress)
+            _LOGGER.info(
+                "Monitoring resumed for %s (learning %d%% complete with %d samples, using smart defaults)",
+                self._config[CONF_APPLIANCE_NAME],
+                progress,
+                len(self._baseline_samples),
+            )
+        else:
+            # Fresh start - initialize with smart defaults
+            self._learning_start_time = dt_util.now()
+            await self._update_health_state(STATE_NORMAL)
+            await self._update_baseline_sensors_with_defaults()
+            await self._update_learning_progress(0)
+            _LOGGER.info(
+                "Monitoring started for %s (using smart defaults: baseline=%.1fW±%.1fW, ON=%.1fW, OFF=%.1fW)",
+                self._config[CONF_APPLIANCE_NAME],
+                self._default_baseline_mean,
+                self._default_baseline_stddev,
+                self._default_compressor_on_power,
+                self._default_compressor_off_power,
+            )
 
     async def async_stop(self) -> None:
         """Stop monitoring."""
+        # Save state before stopping
+        await self._async_save_state()
+
         if self._unsub_power_listener:
             self._unsub_power_listener()
         if self._unsub_daily_reset:
@@ -279,6 +378,11 @@ class ApplianceHealthCoordinator:
 
         await self._update_learning_progress(progress)
 
+        # Periodically save state during learning (every 50 new samples)
+        samples_since_save = len(self._baseline_samples) - self._last_save_sample_count
+        if samples_since_save >= 50:
+            await self._async_save_state()
+
         # Check if learning is complete
         if elapsed_hours >= learning_hours:
             await self._complete_learning()
@@ -327,6 +431,9 @@ class ApplianceHealthCoordinator:
             self._learned_compressor_off_power,
             self._default_compressor_off_power,
         )
+
+        # Save state now that learning is complete
+        await self._async_save_state()
 
     async def _process_monitoring_phase(self, current_power: float) -> None:
         """Process power reading during monitoring phase."""
