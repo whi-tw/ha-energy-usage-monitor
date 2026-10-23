@@ -514,19 +514,29 @@ class ApplianceHealthCoordinator:
                     await self._update_door_open_binary_sensor(False)
 
         # 2. Compressor failure detection (low power or no cycles)
-        if current_power < (baseline_mean * 0.3):
+        # The low power check is skipped while learning: the smart defaults are too
+        # generic to judge what "very low" means for this appliance
+        low_power = self._learning_complete and current_power < (baseline_mean * 0.3)
+        if low_power:
             if self._current_state != STATE_COMPRESSOR_FAILING:
                 await self._update_health_state(STATE_COMPRESSOR_FAILING)
                 _LOGGER.warning("Compressor may be failing: %.1fW is very low", current_power)
 
         # Check for no compressor cycles
         max_off_hours = self._config[CONF_MAX_COMPRESSOR_OFF_HOURS]
+        no_cycles = False
         if self._last_compressor_off_time:
             hours_since_cycle = (dt_util.now() - self._last_compressor_off_time).total_seconds() / 3600
             if hours_since_cycle > max_off_hours:
+                no_cycles = True
                 if self._current_state != STATE_COMPRESSOR_FAILING:
                     await self._update_health_state(STATE_COMPRESSOR_FAILING)
                     _LOGGER.warning("No compressor cycles for %.1f hours", hours_since_cycle)
+
+        # Recover once neither failure condition holds any more
+        if self._current_state == STATE_COMPRESSOR_FAILING and not (low_power or no_cycles):
+            await self._update_health_state(STATE_NORMAL)
+            _LOGGER.info("Compressor failure condition cleared for %s", self._config[CONF_APPLIANCE_NAME])
 
         # 3. Cycle anomaly detection
         expected_cycles = self._config[CONF_EXPECTED_DAILY_CYCLES]
