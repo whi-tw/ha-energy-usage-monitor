@@ -29,7 +29,7 @@ This repository contains a production-ready **custom integration** for Home Assi
 2. Go to **Integrations**
 3. Click **⋮** (three dots in top right) → **Custom repositories**
 4. Add repository:
-   - **URL:** `https://github.com/mjpowersjr/ha-energy-usage-monitor`
+   - **URL:** `https://github.com/whi-tw/ha-energy-usage-monitor`
    - **Category:** Integration
 5. Click **Add**
 6. Find **"Appliance Health Monitor"** in HACS
@@ -187,8 +187,8 @@ MIT License - See LICENSE file for details
 
 ## 📞 Support
 
-- **Issues:** [GitHub Issues](https://github.com/mjpowersjr/ha-energy-usage-monitor/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/mjpowersjr/ha-energy-usage-monitor/discussions)
+- **Issues:** [GitHub Issues](https://github.com/whi-tw/ha-energy-usage-monitor/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/whi-tw/ha-energy-usage-monitor/discussions)
 - **Home Assistant Community:** [Coming soon]
 
 ## ⚠️ Disclaimer
