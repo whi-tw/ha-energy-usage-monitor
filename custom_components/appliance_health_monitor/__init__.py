@@ -311,6 +311,8 @@ class ApplianceHealthCoordinator:
             await self._update_health_state(STATE_NORMAL)
             await self._update_baseline_sensors_with_defaults()
             await self._update_learning_progress(0)
+            # Save now so the start time survives a crash before the first periodic save
+            await self._async_save_state()
             _LOGGER.info(
                 "Monitoring started for %s (using smart defaults: baseline=%.1fW±%.1fW, ON=%.1fW, OFF=%.1fW)",
                 self._config[CONF_APPLIANCE_NAME],
