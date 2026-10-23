@@ -327,15 +327,20 @@ class ApplianceHealthCoordinator:
 
         if self._unsub_power_listener:
             self._unsub_power_listener()
+            self._unsub_power_listener = None
         if self._unsub_daily_reset:
             self._unsub_daily_reset()
+            self._unsub_daily_reset = None
         if self._unsub_stop_listener:
             self._unsub_stop_listener()
+            self._unsub_stop_listener = None
 
         _LOGGER.info("Monitoring stopped for %s", self._config[CONF_APPLIANCE_NAME])
 
     async def _async_stop(self, event: Event) -> None:
         """Handle HA stop event."""
+        # listen_once has already removed this listener; don't unsubscribe it again
+        self._unsub_stop_listener = None
         await self.async_stop()
 
     @callback
