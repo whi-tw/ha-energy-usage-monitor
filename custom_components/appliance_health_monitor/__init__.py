@@ -14,6 +14,10 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 STORAGE_VERSION = 1
+# Saved state without this marker predates timer-based sampling. Its samples were only
+# taken on state changes, which skipped steady readings (e.g. an idle 0W) and biased
+# the learned baseline, so it is discarded.
+SAMPLING_VERSION = 2
 STORAGE_KEY_PREFIX = "appliance_health_monitor"
 
 from .const import (
@@ -30,6 +34,7 @@ from .const import (
     CONF_MAX_COMPRESSOR_OFF_HOURS,
     CONF_POWER_SENSOR,
     DOMAIN,
+    LEARNING_SAMPLE_INTERVAL_SECONDS,
     STATE_BASELINE_DRIFT_HIGH,
     STATE_BASELINE_DRIFT_LOW,
     STATE_COMPRESSOR_FAILING,
@@ -166,6 +171,11 @@ class ApplianceHealthCoordinator:
         self._unsub_power_listener = None
         self._unsub_daily_reset = None
         self._unsub_stop_listener = None
+        self._unsub_sample_timer = None
+
+        # Latest valid power reading, used by the periodic sample timer
+        self._last_power: float | None = None
+        self._low_power_since: datetime | None = None
 
         # Persistent storage
         self._store = Store(
@@ -203,6 +213,7 @@ class ApplianceHealthCoordinator:
     async def _async_save_state(self) -> None:
         """Save learning state to persistent storage."""
         data = {
+            "sampling_version": SAMPLING_VERSION,
             "learning_start_time": self._learning_start_time.isoformat() if self._learning_start_time else None,
             "learning_complete": self._learning_complete,
             "baseline_samples": self._baseline_samples,
@@ -225,6 +236,13 @@ class ApplianceHealthCoordinator:
         data = await self._store.async_load()
         if data is None:
             _LOGGER.debug("No saved state found for %s", self._config[CONF_APPLIANCE_NAME])
+            return False
+
+        if data.get("sampling_version") != SAMPLING_VERSION:
+            _LOGGER.info(
+                "Discarding learning state for %s saved by an older version, restarting learning",
+                self._config[CONF_APPLIANCE_NAME],
+            )
             return False
 
         # Restore learning start time
@@ -322,6 +340,21 @@ class ApplianceHealthCoordinator:
                 self._default_compressor_off_power,
             )
 
+        # Seed the latest reading, then sample on a timer. State change events
+        # are not fired for steady readings, so they alone would under-sample
+        # periods like an appliance sitting idle at a constant 0W.
+        power_state = self.hass.states.get(self._power_sensor)
+        if power_state is not None:
+            try:
+                self._last_power = float(power_state.state)
+            except (ValueError, TypeError):
+                self._last_power = None
+        self._unsub_sample_timer = async_track_time_interval(
+            self.hass,
+            self._async_sample_tick,
+            timedelta(seconds=LEARNING_SAMPLE_INTERVAL_SECONDS),
+        )
+
     async def async_stop(self) -> None:
         """Stop monitoring."""
         # Save state before stopping
@@ -336,6 +369,9 @@ class ApplianceHealthCoordinator:
         if self._unsub_stop_listener:
             self._unsub_stop_listener()
             self._unsub_stop_listener = None
+        if self._unsub_sample_timer:
+            self._unsub_sample_timer()
+            self._unsub_sample_timer = None
 
         _LOGGER.info("Monitoring stopped for %s", self._config[CONF_APPLIANCE_NAME])
 
@@ -352,6 +388,7 @@ class ApplianceHealthCoordinator:
 
         # Handle sensor unavailable
         if new_state is None or new_state.state in ("unavailable", "unknown"):
+            self._last_power = None
             await self._update_health_state(STATE_OFFLINE)
             return
 
@@ -361,12 +398,21 @@ class ApplianceHealthCoordinator:
             _LOGGER.warning("Invalid power value: %s", new_state.state)
             return
 
-        # Collect learning samples in background (if not complete)
-        if not self._learning_complete:
-            await self._process_learning_phase(current_power)
+        self._last_power = current_power
 
+        # Learning samples are collected by the sample timer, not here
         # Always monitor with current values (defaults or learned)
         await self._process_monitoring_phase(current_power)
+
+    async def _async_sample_tick(self, now: datetime) -> None:
+        """Sample the latest reading and re-run checks that must not depend on sensor changes."""
+        if self._last_power is None:
+            return
+
+        if not self._learning_complete:
+            await self._process_learning_phase(self._last_power)
+
+        await self._detect_anomalies(self._last_power)
 
     async def _process_learning_phase(self, current_power: float) -> None:
         """Process power reading during learning phase."""
@@ -514,16 +560,28 @@ class ApplianceHealthCoordinator:
                     await self._update_door_open_binary_sensor(False)
 
         # 2. Compressor failure detection (low power or no cycles)
-        # The low power check is skipped while learning: the smart defaults are too
-        # generic to judge what "very low" means for this appliance
-        low_power = self._learning_complete and current_power < (baseline_mean * 0.3)
-        if low_power:
-            if self._current_state != STATE_COMPRESSOR_FAILING:
-                await self._update_health_state(STATE_COMPRESSOR_FAILING)
-                _LOGGER.warning("Compressor may be failing: %.1fW is very low", current_power)
+        # Low power is only a failure if it lasts longer than the max off time,
+        # since an idle reading near 0W is normal between cycles. It is skipped
+        # while learning: the smart defaults are too generic to judge "very low".
+        max_off_hours = self._config[CONF_MAX_COMPRESSOR_OFF_HOURS]
+        low_power = False
+        if self._learning_complete and current_power < (baseline_mean * 0.3):
+            if self._low_power_since is None:
+                self._low_power_since = dt_util.now()
+            low_hours = (dt_util.now() - self._low_power_since).total_seconds() / 3600
+            if low_hours > max_off_hours:
+                low_power = True
+                if self._current_state != STATE_COMPRESSOR_FAILING:
+                    await self._update_health_state(STATE_COMPRESSOR_FAILING)
+                    _LOGGER.warning(
+                        "Compressor may be failing: %.1fW has been very low for %.1f hours",
+                        current_power,
+                        low_hours,
+                    )
+        else:
+            self._low_power_since = None
 
         # Check for no compressor cycles
-        max_off_hours = self._config[CONF_MAX_COMPRESSOR_OFF_HOURS]
         no_cycles = False
         if self._last_compressor_off_time:
             hours_since_cycle = (dt_util.now() - self._last_compressor_off_time).total_seconds() / 3600

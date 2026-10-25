@@ -62,6 +62,7 @@ DEFAULT_MAX_COMPRESSOR_OFF = 4  # hours
 DEFAULT_DRIFT_THRESHOLD = 15  # percent
 DEFAULT_EXPECTED_CYCLES = 30  # per day
 DEFAULT_CYCLE_TOLERANCE = 50  # percent
+LEARNING_SAMPLE_INTERVAL_SECONDS = 30  # how often to sample power while learning
 
 # Appliance type presets
 APPLIANCE_PRESETS = {
