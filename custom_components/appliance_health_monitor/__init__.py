@@ -177,6 +177,9 @@ class ApplianceHealthCoordinator:
         self._last_power: float | None = None
         self._low_power_since: datetime | None = None
 
+        # Set when the cycle count is out of range; held until the next daily check
+        self._cycle_anomaly = False
+
         # Persistent storage
         self._store = Store(
             hass,
@@ -400,6 +403,10 @@ class ApplianceHealthCoordinator:
 
         self._last_power = current_power
 
+        # The sensor is reporting again, so it is no longer offline
+        if self._current_state == STATE_OFFLINE:
+            await self._update_health_state(STATE_NORMAL)
+
         # Learning samples are collected by the sample timer, not here
         # Always monitor with current values (defaults or learned)
         await self._process_monitoring_phase(current_power)
@@ -597,24 +604,33 @@ class ApplianceHealthCoordinator:
             _LOGGER.info("Compressor failure condition cleared for %s", self._config[CONF_APPLIANCE_NAME])
 
         # 3. Cycle anomaly detection
-        expected_cycles = self._config[CONF_EXPECTED_DAILY_CYCLES]
+        # Too many cycles can be flagged as soon as the count exceeds the range. Too few
+        # can only be judged once a full day has passed, so that is done in _daily_reset.
+        # Skipped while learning: the default on/off levels are too generic to count cycles.
+        expected_cycles = max(self._config[CONF_EXPECTED_DAILY_CYCLES], 1)
         tolerance = self._config[CONF_CYCLE_ANOMALY_TOLERANCE] / 100
 
-        if self._daily_cycles > 0:
-            deviation = abs(self._daily_cycles - expected_cycles) / expected_cycles
-            if deviation > tolerance:
-                if self._current_state not in (STATE_DOOR_OPEN, STATE_COMPRESSOR_FAILING):
-                    await self._update_health_state(STATE_CYCLE_ANOMALY)
-                    _LOGGER.warning(
-                        "Cycle anomaly: %d cycles (expected %d±%d%%)",
-                        self._daily_cycles,
-                        expected_cycles,
-                        int(tolerance * 100),
-                    )
+        if self._learning_complete and self._daily_cycles > expected_cycles * (1 + tolerance):
+            self._cycle_anomaly = True
+
+        if self._cycle_anomaly and self._current_state not in (
+            STATE_DOOR_OPEN,
+            STATE_COMPRESSOR_FAILING,
+            STATE_CYCLE_ANOMALY,
+        ):
+            await self._update_health_state(STATE_CYCLE_ANOMALY)
+            _LOGGER.warning(
+                "Cycle anomaly: %d cycles (expected %d±%d%%)",
+                self._daily_cycles,
+                expected_cycles,
+                int(tolerance * 100),
+            )
 
         # If no anomalies, return to normal
         if self._current_state != STATE_NORMAL and current_power < door_threshold:
-            if self._current_state in (STATE_POWER_SPIKE, STATE_CYCLE_ANOMALY):
+            if self._current_state == STATE_POWER_SPIKE or (
+                self._current_state == STATE_CYCLE_ANOMALY and not self._cycle_anomaly
+            ):
                 await self._update_health_state(STATE_NORMAL)
 
     async def _daily_reset(self, now: datetime) -> None:
@@ -622,6 +638,11 @@ class ApplianceHealthCoordinator:
         today = now.date()
         if today != self._last_cycle_reset:
             _LOGGER.info("Daily reset: %d cycles yesterday", self._daily_cycles)
+            if self._learning_complete:
+                expected_cycles = max(self._config[CONF_EXPECTED_DAILY_CYCLES], 1)
+                tolerance = self._config[CONF_CYCLE_ANOMALY_TOLERANCE] / 100
+                deviation = abs(self._daily_cycles - expected_cycles) / expected_cycles
+                self._cycle_anomaly = deviation > tolerance
             self._daily_cycles = 0
             self._last_cycle_reset = today
             await self._update_cycles_sensor()
